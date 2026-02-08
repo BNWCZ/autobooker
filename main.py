@@ -33,72 +33,24 @@ def get_driver():
     service = Service(ChromeDriverManager().install())
     return webdriver.Chrome(service=service, options=options)
 
-def login(driver):
-    """Gère la première étape de connexion (Email)."""
-    url = os.getenv("APP_URL")
-    email = os.getenv("USER_EMAIL")
+def close_modal_via_cross(driver):
+    """
+    Ferme n'importe quelle modale (Accueil ou Confirmation) en cliquant sur la croix.
+    Sélecteur basé sur : #root > div > div.modal-card.show > div > div.close-card > span
+    """
+    print("Vérification de présence d'une modale à fermer...")
+    wait = WebDriverWait(driver, 5)
     
-    print(f"Navigation vers {url}...")
-    driver.get(url)
-    
-    # wait for email field
-    wait = WebDriverWait(driver, 15)
-    email_field = wait.until(EC.presence_of_element_located((By.ID, "loginEmail")))
-    
-    # Injection JavaScript
-    print("Saisie de l'email...")
-    driver.execute_script("arguments[0].value = arguments[1];", email_field, email)
-    driver.execute_script("arguments[0].dispatchEvent(new Event('input', { bubbles: true }));", email_field)
-    
-    time.sleep(1) # wait for button
-
-    # click login
-    login_button = driver.find_element(By.CLASS_NAME, "loginButton")
-    driver.execute_script("arguments[0].click();", login_button)
-    print("Bouton Login cliqué.")
-
-def handle_microsoft_login(driver):
-    """Gère la saisie du mot de passe sur la page Microsoft."""
-    password = os.getenv("USER_PASSWORD")
-    wait = WebDriverWait(driver, 15)
-    
-    print("Étape Microsoft : Saisie du mot de passe...")
-    
-    # Attendre que le champ mot de passe soit visible et cliquable
-    password_field = wait.until(EC.element_to_be_clickable((By.ID, "i0118")))
-    
-    # Saisie du mot de passe
-    password_field.send_keys(password)
-    
-    # Attendre un court instant et cliquer sur le bouton "Se connecter" (idSIButton9)
-    login_button = wait.until(EC.element_to_be_clickable((By.ID, "idSIButton9")))
-    login_button.click()
-    print("Bouton de connexion Microsoft cliqué.")
-
-def clear_welcome_popups(driver):
-    """Ferme la modale avec des sélecteurs simplifiés et robustes."""
-    print("Vérification de la modale d'accueil...")
-    wait = WebDriverWait(driver, 10)
-    
-    # Sélecteurs simplifiés basés sur tes classes
-    ok_selector = "div.confirmation-wrapper button"
-    close_selector = "div.close-card span"
+    # Sélecteur CSS précis dérivé de ta structure HTML
+    cross_selector = "div.modal-card.show div.close-card > span"
 
     try:
-        # On attend que la modale soit vraiment là (la div parente)
-        wait.until(EC.presence_of_element_located((By.CLASS_NAME, "modal-card")))
-        
-        # On essaie de cliquer sur OK en priorité
-        btn = driver.find_element(By.CSS_SELECTOR, ok_selector)
-        driver.execute_script("arguments[0].click();", btn)
-        print("✅ Modale fermée via 'Ok'.")
+        # On attend que la croix soit cliquable
+        cross_btn = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, cross_selector)))
+        driver.execute_script("arguments[0].click();", cross_btn)
+        print("✅ Modale fermée via la croix.")
     except Exception:
-        try:
-            btn = driver.find_element(By.CSS_SELECTOR, close_selector)
-            driver.execute_script("arguments[0].click();", btn)
-            print("✅ Modale fermée via 'Close'.")
-        except:
-            print("Info : Pas de modale détectée.")
+        print("Info : Pas de croix de modale détectée (ou déjà fermée).")
 
 def navigate_to_favorite(driver):
     """Ouvre la section favoris et clique sur le bureau préféré."""
@@ -113,7 +65,6 @@ def navigate_to_favorite(driver):
         driver.execute_script("arguments[0].click();", fav_header)
         
         # 2. Trouver le bureau par son nom (p.favorites-card-name)
-        # On utilise un XPATH pour trouver le paragraphe qui contient exactement le texte du .env
         seat_locator = f"//p[@class='favorites-card-name' and contains(text(), '{preferred_seat}')]"
         seat_element = wait.until(EC.element_to_be_clickable((By.XPATH, seat_locator)))
         
@@ -122,11 +73,9 @@ def navigate_to_favorite(driver):
         print(f"✅ Bureau '{preferred_seat}' trouvé et sélectionné.")
         
         # 3. Cliquer sur "Book now" dans le menu qui vient de s'ouvrir
-        # On utilise le sélecteur nth-child(1) comme tu l'as suggéré
         time.sleep(1) # Petit temps pour l'animation du menu
         book_now_btn = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "div.action-sheet-option:nth-child(1)")))
         
-        # On vérifie par sécurité que c'est le bon bouton
         if "book now" in book_now_btn.text.lower():
             driver.execute_script("arguments[0].click();", book_now_btn)
             print("✅ Bouton 'Book now' cliqué.")
@@ -155,17 +104,17 @@ def select_booking_date(driver, target_date_str):
     print(f"Navigation : avance de {weeks_to_advance} semaine(s)...")
     
     for i in range(weeks_to_advance):
-        # Utilisation du JSPath exact que tu as fourni
+        # Utilisation du JSPath exact
         jspath_next = "#root > div > div.page-content > div > div.day-selection-wrapper > div.day-selection > div:nth-child(9)"
         
-        # On récupère l'élément via JavaScript et on clique dessus
+        # On force le clic via JS
         script = f"document.querySelector('{jspath_next}').click();"
         driver.execute_script(script)
         
         print(f"Clic navigation {i+1}/{weeks_to_advance}")
-        time.sleep(2) # Vital pour laisser le calendrier se mettre à jour
+        time.sleep(2) 
 
-    # 2. Sélection du jour via ton sélecteur nth-child
+    # 2. Sélection du jour
     day_index = target_date.weekday() + 2
     day_selector = f"div.day-item-wrapper:nth-child({day_index})"
     
@@ -185,18 +134,12 @@ def get_current_booking_time(driver):
     """Récupère l'heure et gère les formats 24h ou AM/PM."""
     try:
         time_element = driver.find_element(By.CSS_SELECTOR, "span.entity-timeslot:nth-child(2)")
-        # On récupère le texte, ex: "Thu 12/02/2026 | 04:45 PM" ou "12/02/2026 | 16:45"
         raw_text = time_element.text.split('|')[-1].strip()
-        
-        # Nettoyage des espaces bizarres (caractères non-breaking space, etc.)
         clean_time = raw_text.replace('\xa0', ' ').strip()
         
         try:
-            # Tentative 1 : Format 24h (16:45)
             return datetime.strptime(clean_time, "%H:%M")
         except ValueError:
-            # Tentative 2 : Format AM/PM (04:45 PM)
-            # %I est l'heure sur 12h, %p est AM ou PM
             return datetime.strptime(clean_time, "%I:%M %p")
             
     except Exception as e:
@@ -226,11 +169,8 @@ def adjust_booking_time(driver, target_hour=8, target_minute=30):
             print(f"✅ Heure cible atteinte : {current_time.strftime('%H:%M')}")
             break
 
-        # 2. Calcul du mouvement pour cette itération (max 200px)
-        # Ratio 60px/h -> 1px/min
+        # 2. Calcul du mouvement
         pixels_to_move = diff_minutes * 1 
-        
-        # On plafonne le mouvement à 200px (positif ou négatif)
         step_pixels = max(min(pixels_to_move, 200), -200)
         
         print(f"🔄 Itération {iteration} : Heure actuelle {current_time.strftime('%H:%M')}")
@@ -238,12 +178,10 @@ def adjust_booking_time(driver, target_hour=8, target_minute=30):
 
         # 3. Action : Scroll + Drag
         try:
-            # On s'assure que le bloc est bien en vue
             driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", booking_block)
             time.sleep(1)
 
             actions = ActionChains(driver)
-            # On décompose bien : Pointer -> Cliquer -> Bouger -> Relâcher
             actions.move_to_element(booking_block)
             actions.click_and_hold()
             actions.pause(0.3)
@@ -252,9 +190,8 @@ def adjust_booking_time(driver, target_hour=8, target_minute=30):
             actions.release()
             actions.perform()
             
-            # Attente de la mise à jour du DOM
             time.sleep(2) 
-            driver.save_screenshot(f"debug_step_{iteration}.png")
+            # driver.save_screenshot(f"debug_step_{iteration}.png") # Debug optionnel
             
         except Exception as e:
             print(f"❌ Erreur lors du drag à l'itération {iteration} : {e}")
@@ -263,7 +200,7 @@ def adjust_booking_time(driver, target_hour=8, target_minute=30):
     print(f"🏁 Ajustement terminé après {iteration} itérations.")
 
 def confirm_booking(driver):
-    """Enchaîne les 3 étapes de validation finale."""
+    """Enchaîne les étapes de validation finale."""
     print("🚀 Lancement de la procédure de confirmation...")
     wait = WebDriverWait(driver, 10)
     
@@ -283,16 +220,12 @@ def confirm_booking(driver):
         ))
         driver.execute_script("arguments[0].click();", confirm_btn)
         
-        # On attend que la réservation soit enregistrée côté serveur
         print("⏳ Traitement de la réservation...")
         time.sleep(3)
 
-        # --- ÉTAPE 3 : Fermeture de la pop-up de succès ---
+        # --- ÉTAPE 3 : Fermeture de la pop-up via la fonction commune ---
         print("Étape 3/3 : Fermeture de la confirmation...")
-        close_cross = wait.until(EC.element_to_be_clickable(
-            (By.CSS_SELECTOR, "span.close")
-        ))
-        driver.execute_script("arguments[0].click();", close_cross)
+        close_modal_via_cross(driver)
         
         print("✅ RÉSERVATION TERMINÉE AVEC SUCCÈS !")
         driver.save_screenshot("booking_final_success.png")
@@ -302,66 +235,55 @@ def confirm_booking(driver):
         driver.save_screenshot("error_confirmation_steps.png")
 
 def main():
-    # 1. Préparation et récupération des paramètres
+    # 1. Paramètres
     target_date_input = input("Entrez la date de réservation (JJ/MM/AAAA) : ")
-    
     start_time_env = os.getenv("START_TIME")
+    
     if not start_time_env:
-        print("❌ Erreur : START_TIME n'est pas défini dans le .env (ex: START_TIME=08:30)")
+        print("❌ Erreur : START_TIME n'est pas défini dans le .env")
         return
 
     try:
-        # Validation du format date
         datetime.strptime(target_date_input, "%d/%m/%Y")
-        # Extraction heure/minute cible
         target_h, target_m = map(int, start_time_env.split(":"))
     except ValueError:
         print("❌ Format de date ou d'heure invalide.")
         return
 
-    # 2. Initialisation du Driver (avec résolution 1920x2000)
+    # 2. Driver
     driver = get_driver()
     
     try:
         driver.get(os.getenv("APP_URL"))
         time.sleep(3)
         
-        # 3. Authentification et nettoyage
-        clear_welcome_popups(driver)
+        # 3. Nettoyage initial (Modale d'accueil)
+        # On utilise la nouvelle fonction générique
+        close_modal_via_cross(driver)
         
-        # Tentative de login si nécessaire
-        if driver.find_elements(By.ID, "loginEmail"):
-            login(driver)
-            handle_microsoft_login(driver)
-            time.sleep(5)
-            clear_welcome_popups(driver)
+        # NOTE : L'authentification est gérée par le profil Chrome existant.
+        # Si la session est expirée, le script échouera ici et demandera une connexion manuelle.
 
-        # 4. Navigation vers le bureau favori
+        # 4. Navigation favoris
         navigate_to_favorite(driver)
         time.sleep(2)
 
-        # 5. Sélection de la date (Logique ISO Week)
+        # 5. Sélection date
         select_booking_date(driver, target_date_input)
         time.sleep(2)
 
-        # 6. Ajustement itératif de l'heure (Drag & Drop pas à pas)
-        # Cette fonction utilise get_current_booking_time avec gestion AM/PM
+        # 6. Ajustement heure
         adjust_booking_time(driver, target_hour=target_h, target_minute=target_m)
         
-        # Capture de sécurité avant le clic final
-        driver.save_screenshot("final_check_before_booking.png")
-        print("📸 Vérification finale enregistrée.")
-
-        # 7. Séquence de confirmation finale (Book -> Confirm -> Close)
+        # 7. Confirmation (Book -> Confirm -> Close)
         confirm_booking(driver)
         
-        print(f"\n✨ PROCESSUS TERMINÉ AVEC SUCCÈS pour le {target_date_input} à {start_time_env} !")
+        print(f"\n✨ PROCESSUS TERMINÉ pour le {target_date_input} à {start_time_env} !")
 
     except Exception as e:
-        print(f"\n❌ Une erreur critique est survenue durant le flux : {e}")
+        print(f"\n❌ Erreur critique : {e}")
         driver.save_screenshot("error_main_crash.png")
     finally:
-        # 8. Fermeture propre
         driver.quit()
         print("Navigateur fermé.")
 
