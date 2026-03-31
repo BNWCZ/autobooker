@@ -11,7 +11,7 @@ from playwright.sync_api import sync_playwright
 load_dotenv()
 
 from auth import get_browser_context, is_session_expired, save_session
-from booker import book
+from booker import book, cancel
 from notifier import notify
 
 PARIS_TZ = pytz.timezone("Europe/Paris")
@@ -88,8 +88,36 @@ def run_book() -> None:
             browser.close()
 
 
+def run_cancel(target_date=None) -> None:
+    today = datetime.now(PARIS_TZ).date()
+    target = target_date or today
+    target_str = target.isoformat()
+
+    with sync_playwright() as p:
+        browser, context = get_browser_context(p, headless=True)
+        page = context.new_page()
+        try:
+            page.goto(APP_URL)
+            page.wait_for_load_state("load")
+
+            if is_session_expired(page):
+                notify("Session expirée", "Lancez `python src/main.py auth` pour renouveler la session.")
+                return
+
+            cancel(page, target)
+            _update_status(target_str, "cancelled")
+            notify("Annulation réussie ✅", f"Réservation annulée pour le {target_str}")
+
+        except Exception as e:
+            notify("Erreur annulation ❌", f"{target_str} — {e}")
+            raise
+        finally:
+            context.close()
+            browser.close()
+
+
 def run_checkin() -> None:
-    # To be implemented — requires Google Calendar integration and check-in/cancel UI flows
+    # To be implemented — requires Google Calendar integration and check-in UI flow
     print("[checkin] Not yet implemented.")
 
 
@@ -115,10 +143,12 @@ if __name__ == "__main__":
 
     if mode == "book":
         run_book()
+    elif mode == "cancel":
+        run_cancel()
     elif mode == "checkin":
         run_checkin()
     elif mode == "auth":
         run_auth()
     else:
-        print(f"Unknown mode '{mode}'. Usage: python src/main.py [book|checkin|auth]")
+        print(f"Unknown mode '{mode}'. Usage: python src/main.py [book|cancel|checkin|auth]")
         sys.exit(1)

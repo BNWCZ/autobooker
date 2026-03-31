@@ -64,6 +64,50 @@ def book(page: Page, target_date: date) -> None:
         raise RuntimeError(f"Booking rejected by app: {error.inner_text()}")
 
 
+def cancel(page: Page, target_date: date) -> None:
+    date_str = target_date.strftime("%d/%m/%Y")
+
+    # 1. Navigate to bookings overview
+    page.goto(f"{APP_URL}/bookingsOverview")
+    page.wait_for_load_state("load")
+
+    # 2. Ensure we're on "Next Bookings" tab and wait for items
+    page.locator(".content-switcher-item").filter(has_text=re.compile("^Next Bookings$")).click()
+    try:
+        page.wait_for_selector(".booking-item", timeout=10_000)
+    except Exception:
+        pass
+
+    # 3. Find the booking for target_date by its date text
+    booking = _find_booking_by_date(page, date_str)
+    if booking is None:
+        raise RuntimeError(f"No booking found for {date_str} in Next Bookings")
+
+    # 4. Click to open action sheet
+    booking.click()
+
+    # 5. Click "Cancel booking" in action sheet
+    page.locator(".action-sheet-option").filter(has_text=re.compile("^Cancel booking$", re.IGNORECASE)).click()
+
+    # 6. Confirm cancellation
+    page.get_by_role("button", name="Cancel booking", exact=True).click(force=True)
+
+    # 7. Verify success
+    page.wait_for_selector(".modal-card.show .confirmation-wrapper", timeout=10_000)
+    success = page.locator(".modal-card.show .confirmation-wrapper .success-text")
+    if success.count() == 0:
+        raise RuntimeError("Cancellation confirmation not detected")
+
+
+def _find_booking_by_date(page: Page, date_str: str):
+    items = page.locator(".booking-item")
+    for i in range(items.count()):
+        item = items.nth(i)
+        if date_str in (item.inner_text() or ""):
+            return item
+    return None
+
+
 def _find_eligible_booking(page: Page):
     items = page.locator(".booking-item")
     for i in range(items.count()):
