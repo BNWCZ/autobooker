@@ -6,3 +6,4 @@ __pycache__/
 todo.md
 bookings.csv
 session/state.json
+service_account.json

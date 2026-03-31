@@ -12,7 +12,7 @@ load_dotenv()
 
 from auth import get_browser_context, is_session_expired, save_session
 from booker import book, cancel, checkin
-from calendar_client import has_btt_event
+from calendar_client import has_btt_event, has_btt_events_next_week
 from notifier import notify
 
 PARIS_TZ = pytz.timezone("Europe/Paris")
@@ -149,6 +149,12 @@ def run_checkin() -> None:
             browser.close()
 
 
+def run_calendar_reminder() -> None:
+    today = datetime.now(PARIS_TZ).date()
+    if not has_btt_events_next_week(today):
+        notify("Alerte Calendrier ⚠️", "Events de télétravail non renseignés")
+
+
 def run_auth() -> None:
     print("Opening browser for manual authentication...")
     with sync_playwright() as p:
@@ -175,8 +181,10 @@ if __name__ == "__main__":
         run_cancel()
     elif mode == "checkin":
         run_checkin()
+    elif mode == "reminder":
+        run_calendar_reminder()
     elif mode == "auth":
         run_auth()
     else:
-        print(f"Unknown mode '{mode}'. Usage: python src/main.py [book|cancel|checkin|auth]")
+        print(f"Unknown mode '{mode}'. Usage: python src/main.py [book|cancel|checkin|reminder|auth]")
         sys.exit(1)

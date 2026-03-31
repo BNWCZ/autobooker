@@ -5,3 +5,5 @@ services:
     volumes:
       - ./session:/app/session
       - ./bookings.csv:/app/bookings.csv
+      - ./service_account.json:/app/service_account.json:ro
+      - ./debug:/app/debug
