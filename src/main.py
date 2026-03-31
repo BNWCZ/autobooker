@@ -18,7 +18,7 @@ PARIS_TZ = pytz.timezone("Europe/Paris")
 APP_URL = os.getenv("APP_URL", "https://doorjames.app")
 BOOKINGS_PATH = Path(os.getenv("BOOKINGS_PATH", "bookings.csv"))
 
-DAYS_AHEAD = 42
+DAYS_AHEAD = 41
 
 
 # ---------------------------------------------------------------------------

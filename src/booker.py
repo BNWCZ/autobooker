@@ -57,8 +57,11 @@ def book(page: Page, target_date: date) -> None:
     # 11. Confirm
     page.get_by_role("button", name="Confirm", exact=True).click()
 
-    # 12. Verify success
+    # 12. Verify success — the confirmation-wrapper also appears on errors, so check for error-text
     page.wait_for_selector(".modal-card.show .confirmation-wrapper", timeout=10_000)
+    error = page.locator(".modal-card.show .confirmation-wrapper .error-text")
+    if error.count() > 0:
+        raise RuntimeError(f"Booking rejected by app: {error.inner_text()}")
 
 
 def _find_eligible_booking(page: Page):
