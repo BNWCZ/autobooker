@@ -69,7 +69,7 @@ def run_book() -> None:
         page = context.new_page()
         try:
             page.goto(APP_URL)
-            page.wait_for_load_state("networkidle")
+            page.wait_for_load_state("load")
 
             if is_session_expired(page):
                 notify("Session expirée", "Lancez `python src/main.py auth` pour renouveler la session.")

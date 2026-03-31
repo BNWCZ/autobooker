@@ -17,11 +17,14 @@ def book(page: Page, target_date: date) -> None:
 
     # 1. Navigate to bookings overview
     page.goto(f"{APP_URL}/bookingsOverview")
-    page.wait_for_load_state("networkidle")
+    page.wait_for_load_state("load")
 
-    # 2. Switch to "Past Bookings" tab
+    # 2. Switch to "Past Bookings" tab and wait for items to render
     page.locator(".content-switcher-item").filter(has_text=re.compile("^Past Bookings$")).click()
-    page.wait_for_load_state("networkidle")
+    try:
+        page.wait_for_selector(".booking-item", timeout=10_000)
+    except Exception:
+        pass  # list may genuinely be empty; _find_eligible_booking handles that
 
     # 3. Find the first eligible past booking (checkOutForgotten or cancelled)
     eligible = _find_eligible_booking(page)
@@ -33,7 +36,7 @@ def book(page: Page, target_date: date) -> None:
 
     # 5. Click "Book" in the action sheet
     page.locator(".action-sheet-option").filter(has_text=re.compile("^Book$")).click()
-    page.wait_for_load_state("networkidle")
+    page.wait_for_load_state("load")
 
     # 6. Fill "From" date: target_date
     _fill_datepicker(page, label="From", target_date=target_date, months_to_advance=months_to_advance)
@@ -47,16 +50,12 @@ def book(page: Page, target_date: date) -> None:
     # 9. Set "To" time: 17:00
     _fill_timepicker(page, label="To", hour="17", minute="00")
 
-    # 10. Save
-    page.locator("button.button.primary.full-width.regular-height").filter(
-        has=page.locator("span", has_text=re.compile("^Save$"))
-    ).click()
-    page.wait_for_load_state("networkidle")
+    # 10. Save — force=True bypasses any picker panel that may still be overlapping
+    page.get_by_role("button", name="Save", exact=True).click(force=True)
+    page.wait_for_load_state("load")
 
     # 11. Confirm
-    page.locator("button.button.primary.half-width.regular-height").filter(
-        has=page.locator("span", has_text=re.compile("^Confirm$"))
-    ).click()
+    page.get_by_role("button", name="Confirm", exact=True).click()
 
     # 12. Verify success
     page.wait_for_selector(".modal-card.show .confirmation-wrapper", timeout=10_000)
@@ -80,17 +79,22 @@ def _fill_datepicker(page: Page, label: str, target_date: date, months_to_advanc
         has=page.locator(".date-time-input-label", has_text=re.compile(f"^{label}$"))
     )
     wrapper.locator(".datepicker-wrapper").click()
+    page.wait_for_timeout(400)  # let the open animation settle
 
-    # Advance to the correct month
+    # Read the active month header (first element during any slide transition)
     forward_btn = page.locator(f'button:has(path[d="{_FORWARD_ARROW_PATH}"])')
     for _ in range(months_to_advance):
+        header = page.locator(".MuiPickersCalendarHeader-transitionContainer p").first.inner_text()
+        shown = datetime.strptime(header.strip(), "%B %Y")
+        if (shown.year, shown.month) >= (target_date.year, target_date.month):
+            break
         forward_btn.click()
-        page.wait_for_timeout(300)
+        page.wait_for_timeout(400)
 
-    # Click the correct day (exact match to avoid e.g. clicking "1" inside "12")
+    # Click the correct day — use first visible match (both From/To pickers are in the DOM)
     page.locator("button.MuiPickersDay-day:not(.MuiPickersDay-dayDisabled)").filter(
         has=page.locator("p.MuiTypography-body2", has_text=re.compile(f"^{target_date.day}$"))
-    ).click()
+    ).locator("visible=true").first.click()
 
     # Confirm date selection
     page.locator("span.MuiButton-label", has_text=re.compile("^Ok$")).click()
