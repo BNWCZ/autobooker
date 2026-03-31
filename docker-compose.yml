@@ -1,0 +1,7 @@
+services:
+  joordames:
+    build: .
+    env_file: .env
+    volumes:
+      - ./session:/app/session
+      - ./bookings.csv:/app/bookings.csv
