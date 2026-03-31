@@ -99,6 +99,23 @@ def cancel(page: Page, target_date: date) -> None:
         raise RuntimeError("Cancellation confirmation not detected")
 
 
+def checkin(page: Page) -> None:
+    # 1. Go to homepage
+    page.goto(APP_URL)
+    page.wait_for_load_state("load")
+
+    # 2. Open "Today's Bookings" accordion
+    page.locator(".next-booking-headerContainer").filter(
+        has_text=re.compile(r"Today's Bookings")
+    ).click()
+
+    # 3. Click the check-in button inside the booking card
+    page.locator(".booking-card .button.primary.variable-width.small-height.checkin").click()
+
+    # 4. Click "Check-in" in the action sheet
+    page.locator(".action-sheet-option").filter(has_text=re.compile("^Check-in$")).click()
+
+
 def _find_booking_by_date(page: Page, date_str: str):
     items = page.locator(".booking-item")
     for i in range(items.count()):

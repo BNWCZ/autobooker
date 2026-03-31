@@ -11,7 +11,8 @@ from playwright.sync_api import sync_playwright
 load_dotenv()
 
 from auth import get_browser_context, is_session_expired, save_session
-from booker import book, cancel
+from booker import book, cancel, checkin
+from calendar_client import has_btt_event
 from notifier import notify
 
 PARIS_TZ = pytz.timezone("Europe/Paris")
@@ -117,8 +118,35 @@ def run_cancel(target_date=None) -> None:
 
 
 def run_checkin() -> None:
-    # To be implemented — requires Google Calendar integration and check-in UI flow
-    print("[checkin] Not yet implemented.")
+    today = datetime.now(PARIS_TZ).date()
+    today_str = today.isoformat()
+
+    with sync_playwright() as p:
+        browser, context = get_browser_context(p, headless=True)
+        page = context.new_page()
+        try:
+            page.goto(APP_URL)
+            page.wait_for_load_state("load")
+
+            if is_session_expired(page):
+                notify("Session expirée", "Lancez `python src/main.py auth` pour renouveler la session.")
+                return
+
+            if has_btt_event(today):
+                cancel(page, today)
+                _update_status(today_str, "cancelled")
+                notify("Annulation réussie ✅", f"Réservation annulée pour le {today_str} (BTT)")
+            else:
+                checkin(page)
+                _update_status(today_str, "checked_in")
+                notify("Check-in réussi ✅", f"Check-in effectué pour le {today_str}")
+
+        except Exception as e:
+            notify("Erreur check-in/annulation ❌", f"{today_str} — {e}")
+            raise
+        finally:
+            context.close()
+            browser.close()
 
 
 def run_auth() -> None:
