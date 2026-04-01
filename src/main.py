@@ -13,6 +13,7 @@ load_dotenv()
 from auth import get_browser_context, is_session_expired, save_session
 from booker import book, cancel, checkin
 from calendar_client import has_remote_events_next_week, get_ooo_calendar_days
+from discord_commands import SKIP, check_skip_commands
 from notifier import notify
 
 PARIS_TZ = pytz.timezone("Europe/Paris")
@@ -121,6 +122,18 @@ def run_checkin() -> None:
     today = datetime.now(PARIS_TZ).date()
     today_str = today.isoformat()
     today_status = _load_bookings().get(today_str, "")
+    is_ooo = today_status.startswith("out of office")
+
+    skip = check_skip_commands()
+
+    if SKIP in skip:
+        if is_ooo:
+            notify("Action ignorée ⏭️", f"Annulation ignorée pour le {today_str} (skip)")
+            print(f"[checkin] skip — annulation skipped for {today_str}")
+        else:
+            notify("Action ignorée ⏭️", f"Check-in ignoré pour le {today_str} (skip)")
+            print(f"[checkin] skip — check-in skipped for {today_str}")
+        return
 
     with sync_playwright() as p:
         browser, context = get_browser_context(p, headless=True)
@@ -133,7 +146,7 @@ def run_checkin() -> None:
                 notify("Session expirée", "Lancez `python src/main.py auth` pour renouveler la session.")
                 return
 
-            if today_status.startswith("out of office"):
+            if is_ooo:
                 try:
                     cancel(page, today)
                     _update_status(today_str, "cancelled")
