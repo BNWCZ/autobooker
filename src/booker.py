@@ -139,7 +139,7 @@ def _find_eligible_booking(page: Page):
         if status.count() == 0:
             continue
         cls = status.get_attribute("class") or ""
-        if "status-checkOutForgotten" in cls or "status-cancelled" in cls:
+        if "status-checkOutForgotten" in cls or "status-cancelled" in cls or "status-checkedOut" in cls:
             return item
     return None
 
