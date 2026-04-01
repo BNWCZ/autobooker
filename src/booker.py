@@ -109,11 +109,17 @@ def checkin(page: Page) -> None:
         has_text=re.compile(r"Today's Bookings")
     ).click()
 
-    # 3. Click the check-in button inside the booking card
-    page.locator(".booking-card .button.primary.variable-width.small-height.checkin").click()
+    # 3. Click the check-in button inside the booking card footer
+    page.locator(".booking-card-footer-button button.checkin").click()
 
     # 4. Click "Check-in" in the action sheet
     page.locator(".action-sheet-option").filter(has_text=re.compile("^Check-in$")).click()
+
+    # 5. Verify success
+    page.wait_for_selector(".modal-card.show .confirmation-wrapper", timeout=10_000)
+    success = page.locator(".modal-card.show .confirmation-wrapper .success-text")
+    if success.count() == 0:
+        raise RuntimeError("Check-in confirmation not detected")
 
 
 def _find_booking_by_date(page: Page, date_str: str):
