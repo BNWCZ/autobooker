@@ -12,7 +12,7 @@ load_dotenv()
 
 from auth import get_browser_context, is_session_expired, save_session
 from booker import book, cancel, checkin
-from calendar_client import has_btt_event, has_btt_events_next_week
+from calendar_client import has_remote_events_next_week, get_ooo_calendar_days
 from notifier import notify
 
 PARIS_TZ = pytz.timezone("Europe/Paris")
@@ -61,7 +61,7 @@ def run_book() -> None:
         return
 
     existing = _load_bookings().get(target_str, "")
-    if existing in ("booked", "checked_in"):
+    if existing in ("booked", "checked_in") or existing.startswith("out of office"):
         print(f"[book] {target_str} already has status '{existing}' — skipping.")
         return
 
@@ -120,6 +120,7 @@ def run_cancel(target_date=None) -> None:
 def run_checkin() -> None:
     today = datetime.now(PARIS_TZ).date()
     today_str = today.isoformat()
+    today_status = _load_bookings().get(today_str, "")
 
     with sync_playwright() as p:
         browser, context = get_browser_context(p, headless=True)
@@ -132,10 +133,16 @@ def run_checkin() -> None:
                 notify("Session expirée", "Lancez `python src/main.py auth` pour renouveler la session.")
                 return
 
-            if has_btt_event(today):
-                cancel(page, today)
-                _update_status(today_str, "cancelled")
-                notify("Annulation réussie ✅", f"Réservation annulée pour le {today_str} (BTT)")
+            if today_status.startswith("out of office"):
+                try:
+                    cancel(page, today)
+                    _update_status(today_str, "cancelled")
+                    notify("Annulation réussie ✅", f"Réservation annulée pour le {today_str} ({today_status})")
+                except RuntimeError as e:
+                    if "No booking found" in str(e):
+                        print(f"[checkin] No booking to cancel for {today_str} ({today_status}) — nothing to do.")
+                    else:
+                        raise
             else:
                 checkin(page)
                 _update_status(today_str, "checked_in")
@@ -149,9 +156,60 @@ def run_checkin() -> None:
             browser.close()
 
 
+def run_sync() -> None:
+    import holidays as holidays_lib
+
+    today = datetime.now(PARIS_TZ).date()
+    end = today + timedelta(days=89)
+
+    fr_holidays = holidays_lib.France()
+    ooo_cal = get_ooo_calendar_days(today, end)
+    bookings = _load_bookings()
+
+    OOO_STATUSES = ("out of office - remote", "out of office - holidays", "out of office - public holiday")
+
+    changed = 0
+    for i in range(90):
+        d = today + timedelta(days=i)
+        if d.weekday() >= 5:
+            continue
+
+        d_str = d.isoformat()
+        current = bookings.get(d_str, "")
+
+        cal_reason = ooo_cal.get(d)  # 'remote', 'holidays', or None
+        is_bank_holiday = d in fr_holidays
+
+        # Priority: holidays > public holiday > remote
+        if cal_reason == "holidays":
+            new_ooo = "out of office - holidays"
+        elif is_bank_holiday:
+            new_ooo = "out of office - public holiday"
+        elif cal_reason == "remote":
+            new_ooo = "out of office - remote"
+        else:
+            new_ooo = None
+
+        if new_ooo:
+            if current != new_ooo:
+                bookings[d_str] = new_ooo
+                changed += 1
+        else:
+            # Clear any stale OOO status (remote event removed, holiday period ended, etc.)
+            if current in OOO_STATUSES:
+                del bookings[d_str]
+                changed += 1
+
+    if changed:
+        _save_bookings(bookings)
+        notify("Calendrier synchronisé 📅", f"{changed} jour(s) mis à jour")
+    else:
+        print("[sync] No changes detected.")
+
+
 def run_calendar_reminder() -> None:
     today = datetime.now(PARIS_TZ).date()
-    if not has_btt_events_next_week(today):
+    if not has_remote_events_next_week(today):
         notify("Alerte Calendrier ⚠️", "Events de télétravail non renseignés")
 
 
@@ -181,10 +239,12 @@ if __name__ == "__main__":
         run_cancel()
     elif mode == "checkin":
         run_checkin()
+    elif mode == "sync":
+        run_sync()
     elif mode == "reminder":
         run_calendar_reminder()
     elif mode == "auth":
         run_auth()
     else:
-        print(f"Unknown mode '{mode}'. Usage: python src/main.py [book|cancel|checkin|reminder|auth]")
+        print(f"Unknown mode '{mode}'. Usage: python src/main.py [book|cancel|checkin|sync|reminder|auth]")
         sys.exit(1)

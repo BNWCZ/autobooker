@@ -91,3 +91,13 @@ Specific trigger events (which calendar event name to watch, how far in advance 
 - Never commit `.env` or `session/` — add both to `.gitignore`
 - Always confirm behaviour changes with the operator before implementing
 - Keep it simple — this is a single-user personal tool, not a product
+
+---
+
+## Operations handled by Claude Code (not the operator)
+
+- Creating, editing, or deleting files and directories
+- Building Docker images (`docker compose build`)
+- Running Docker containers (`docker compose run`)
+- Git operations (add, commit, push)
+- Any other shell/file system task — the operator should not need to run commands themselves

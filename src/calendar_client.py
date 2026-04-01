@@ -11,6 +11,9 @@ SCOPES = ["https://www.googleapis.com/auth/calendar.readonly"]
 CALENDAR_ID = os.getenv("GOOGLE_CALENDAR_ID", "primary")
 SERVICE_ACCOUNT_PATH = os.getenv("GOOGLE_SERVICE_ACCOUNT_PATH", "service_account.json")
 
+_REMOTE_PATTERNS = [p.strip().upper() for p in os.getenv("REMOTE_WORKING_PATTERNS", "").split(",") if p.strip()]
+_OOO_PATTERNS = [p.strip().upper() for p in os.getenv("OUT_OF_OFFICE_PATTERNS", "").split(",") if p.strip()]
+
 
 def _service():
     creds = service_account.Credentials.from_service_account_file(
@@ -35,18 +38,75 @@ def _events_for_range(start: date, end: date) -> list:
     return result.get("items", [])
 
 
-def _is_btt(event: dict) -> bool:
-    return event.get("summary", "").strip().upper() == "BTT"
+def _is_remote(event: dict) -> bool:
+    summary = event.get("summary", "").upper()
+    return any(p in summary for p in _REMOTE_PATTERNS)
 
 
-def has_btt_event(target_date: date) -> bool:
-    """Returns True if there is a BTT event on target_date."""
-    events = _events_for_range(target_date, target_date)
-    return any(_is_btt(e) for e in events)
+def _is_holidays(event: dict) -> bool:
+    summary = event.get("summary", "").upper()
+    return any(p in summary for p in _OOO_PATTERNS)
 
 
-def has_btt_events_next_week(today: date) -> bool:
-    """Returns True if next Mon–Fri has at least one BTT event.
+def _event_dates(event: dict) -> list[date]:
+    """Returns all calendar dates covered by an event."""
+    start = event.get("start", {})
+    end_data = event.get("end", {})
+
+    if "date" in start:
+        # All-day event; end date is exclusive in the Google Calendar API
+        start_d = date.fromisoformat(start["date"])
+        end_d = date.fromisoformat(end_data["date"])
+        dates = []
+        d = start_d
+        while d < end_d:
+            dates.append(d)
+            d += timedelta(days=1)
+        return dates
+    else:
+        dt_str = start.get("dateTime", "")
+        if not dt_str:
+            return []
+        dt_start = datetime.fromisoformat(dt_str)
+        if dt_start.tzinfo:
+            dt_start = dt_start.astimezone(PARIS_TZ)
+        dt_end_str = end_data.get("dateTime", "")
+        if dt_end_str:
+            dt_end = datetime.fromisoformat(dt_end_str)
+            if dt_end.tzinfo:
+                dt_end = dt_end.astimezone(PARIS_TZ)
+            end_d = dt_end.date()
+        else:
+            end_d = dt_start.date()
+        dates = []
+        d = dt_start.date()
+        while d <= end_d:
+            dates.append(d)
+            d += timedelta(days=1)
+        return dates
+
+
+def get_ooo_calendar_days(start: date, end: date) -> dict[date, str]:
+    """
+    Returns a dict mapping dates to 'remote' or 'holidays' based on Google Calendar events.
+    Uses a single API call for the full range.
+    Priority: 'holidays' wins over 'remote' on the same day.
+    """
+    events = _events_for_range(start, end)
+    result: dict[date, str] = {}
+    for event in events:
+        for d in _event_dates(event):
+            if not (start <= d <= end):
+                continue
+            if _is_holidays(event):
+                result[d] = "holidays"
+            elif _is_remote(event) and result.get(d) != "holidays":
+                result[d] = "remote"
+    return result
+
+
+def has_remote_events_next_week(today: date) -> bool:
+    """Returns True if next Mon–Fri has at least one remote working event.
     today should be Saturday or Sunday.
     """
     days_to_monday = 7 - today.weekday()  # Sat→2, Sun→1
@@ -54,4 +114,4 @@ def has_btt_events_next_week(today: date) -> bool:
     friday = monday + timedelta(days=4)
 
     events = _events_for_range(monday, friday)
-    return any(_is_btt(e) for e in events)
+    return any(_is_remote(e) for e in events)
