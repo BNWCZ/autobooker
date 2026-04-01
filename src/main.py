@@ -22,6 +22,20 @@ BOOKINGS_PATH = Path(os.getenv("BOOKINGS_PATH", "bookings.csv"))
 
 DAYS_AHEAD = 41
 
+_SILENT_OOO_STATUSES = ("out of office - holidays", "out of office - public holiday")
+
+
+def _is_silent_day() -> bool:
+    """Return True on days where notifications should be silent: weekends, public holidays, calendar holidays."""
+    import holidays as holidays_lib
+    today = datetime.now(PARIS_TZ).date()
+    if today.weekday() >= 5:
+        return True
+    if today in holidays_lib.France():
+        return True
+    status = _load_bookings().get(today.isoformat(), "")
+    return status in _SILENT_OOO_STATUSES
+
 
 # ---------------------------------------------------------------------------
 # bookings.csv helpers
@@ -79,7 +93,7 @@ def run_book() -> None:
 
             book(page, target)
             _update_status(target_str, "booked")
-            notify("Réservation réussie ✅", f"Bureau réservé pour le {target_str} (09:00–17:00)")
+            notify("Réservation réussie ✅", f"Bureau réservé pour le {target_str} (09:00–17:00)", silent=_is_silent_day())
 
         except Exception as e:
             _update_status(target_str, "error")
@@ -127,11 +141,12 @@ def run_checkin() -> None:
     skip = check_skip_commands()
 
     if SKIP in skip:
+        silent = _is_silent_day()
         if is_ooo:
-            notify("Action ignorée ⏭️", f"Annulation ignorée pour le {today_str} (skip)")
+            notify("Action ignorée ⏭️", f"Annulation ignorée pour le {today_str} (skip)", silent=silent)
             print(f"[checkin] skip — annulation skipped for {today_str}")
         else:
-            notify("Action ignorée ⏭️", f"Check-in ignoré pour le {today_str} (skip)")
+            notify("Action ignorée ⏭️", f"Check-in ignoré pour le {today_str} (skip)", silent=silent)
             print(f"[checkin] skip — check-in skipped for {today_str}")
         return
 
@@ -150,7 +165,7 @@ def run_checkin() -> None:
                 try:
                     cancel(page, today)
                     _update_status(today_str, "cancelled")
-                    notify("Annulation réussie ✅", f"Réservation annulée pour le {today_str} ({today_status})")
+                    notify("Annulation réussie ✅", f"Réservation annulée pour le {today_str} ({today_status})", silent=_is_silent_day())
                 except RuntimeError as e:
                     if "No booking found" in str(e):
                         print(f"[checkin] No booking to cancel for {today_str} ({today_status}) — nothing to do.")
@@ -159,7 +174,7 @@ def run_checkin() -> None:
             else:
                 checkin(page)
                 _update_status(today_str, "checked_in")
-                notify("Check-in réussi ✅", f"Check-in effectué pour le {today_str}")
+                notify("Check-in réussi ✅", f"Check-in effectué pour le {today_str}", silent=_is_silent_day())
 
         except Exception as e:
             notify("Erreur check-in/annulation ❌", f"{today_str} — {e}")
@@ -215,7 +230,7 @@ def run_sync() -> None:
 
     if changed:
         _save_bookings(bookings)
-        notify("Calendrier synchronisé 📅", f"{changed} jour(s) mis à jour")
+        notify("Calendrier synchronisé 📅", f"{changed} jour(s) mis à jour", silent=True)
     else:
         print("[sync] No changes detected.")
 
