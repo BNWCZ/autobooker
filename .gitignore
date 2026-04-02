@@ -1,9 +1,17 @@
-venv/
+# Runtime
 .env
-__pycache__/
-*.pyc
-.chrome_profile/
-todo.md
 bookings.csv
+cron.log
 session/state.json
 service_account.json
+debug/
+
+# Python
+venv/
+__pycache__/
+*.pyc
+
+# Internal
+CLAUDE.md
+ROADMAP.md
+.claude/
