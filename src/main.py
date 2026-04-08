@@ -10,7 +10,7 @@ from playwright.sync_api import sync_playwright
 
 load_dotenv()
 
-from auth import get_browser_context, is_session_expired, save_session
+from auth import ensure_authenticated, get_browser_context, save_session
 from booker import book, cancel, checkin
 from calendar_client import has_remote_events_next_week, get_ooo_calendar_days
 from discord_commands import SKIP, check_skip_commands
@@ -87,9 +87,8 @@ def run_book() -> None:
             page.goto(APP_URL)
             page.wait_for_load_state("load")
 
-            if is_session_expired(page):
-                notify("Session expirée", "Lancez `python src/main.py auth` pour renouveler la session.")
-                return
+            if ensure_authenticated(page, context):
+                notify("Réauthentification réussie ✅", "Session renouvelée automatiquement", silent=_is_silent_day())
 
             book(page, target)
             _update_status(target_str, "booked")
@@ -116,9 +115,8 @@ def run_cancel(target_date=None) -> None:
             page.goto(APP_URL)
             page.wait_for_load_state("load")
 
-            if is_session_expired(page):
-                notify("Session expirée", "Lancez `python src/main.py auth` pour renouveler la session.")
-                return
+            if ensure_authenticated(page, context):
+                notify("Réauthentification réussie ✅", "Session renouvelée automatiquement", silent=_is_silent_day())
 
             cancel(page, target)
             _update_status(target_str, "cancelled")
@@ -157,9 +155,8 @@ def run_checkin() -> None:
             page.goto(APP_URL)
             page.wait_for_load_state("load")
 
-            if is_session_expired(page):
-                notify("Session expirée", "Lancez `python src/main.py auth` pour renouveler la session.")
-                return
+            if ensure_authenticated(page, context):
+                notify("Réauthentification réussie ✅", "Session renouvelée automatiquement", silent=_is_silent_day())
 
             if is_ooo:
                 try:
