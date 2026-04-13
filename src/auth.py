@@ -4,8 +4,8 @@ from pathlib import Path
 from playwright.sync_api import Browser, BrowserContext, Playwright
 
 STATE_PATH = Path(os.getenv("SESSION_STATE_PATH", "session/state.json"))
-APP_DOMAIN = "doorjames.app"
-APP_URL = os.getenv("APP_URL", "https://doorjames.app")
+APP_DOMAIN = "spa.doorjames.app"
+APP_URL = os.getenv("APP_URL", "https://spa.doorjames.app")
 
 
 def get_browser_context(playwright: Playwright, headless: bool = True) -> tuple[Browser, BrowserContext]:
@@ -13,10 +13,14 @@ def get_browser_context(playwright: Playwright, headless: bool = True) -> tuple[
         headless=headless,
         args=["--no-sandbox", "--disable-dev-shm-usage"],
     )
+    context_kwargs = {
+        "timezone_id": "Europe/Paris",
+        "locale": "fr-FR",
+    }
     if STATE_PATH.exists():
-        context = browser.new_context(storage_state=str(STATE_PATH))
+        context = browser.new_context(storage_state=str(STATE_PATH), **context_kwargs)
     else:
-        context = browser.new_context()
+        context = browser.new_context(**context_kwargs)
     return browser, context
 
 

@@ -101,3 +101,16 @@ Specific trigger events (which calendar event name to watch, how far in advance 
 - Running Docker containers (`docker compose run`)
 - Git operations (add, commit, push)
 - Any other shell/file system task — the operator should not need to run commands themselves
+
+---
+
+## Error log — learn from each mistake, never repeat it
+
+Each error encountered during this project is logged here. Claude must not make the same mistake twice.
+
+| # | Error | Rule |
+|---|-------|------|
+| 1 | `Write` tool called without reading the file first → `File has not been read yet` | Always `Read` before `Write` on existing files |
+| 2 | Used `glob` pattern in a `Write` file path | `Write` requires an exact absolute path — no wildcards, no patterns |
+| 3 | Refactored `run()` to accept `None` defaults but left `__main__` passing hardcoded values — dynamic logic silently ignored | When adding dynamic defaults to a function, update the call site too |
+| 4 | Ran `docker compose run` in background, saw "Created" and assumed stuck, killed it — container was just slow to start (Playwright/Chrome init ~30s) | Always run `docker compose run` in foreground with sufficient timeout; never background it |

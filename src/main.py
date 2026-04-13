@@ -11,13 +11,13 @@ from playwright.sync_api import sync_playwright
 load_dotenv()
 
 from auth import ensure_authenticated, get_browser_context, save_session
-from booker import book, cancel, checkin
+from spa_booker import book, cancel, checkin
 from calendar_client import has_remote_events_next_week, get_ooo_calendar_days
 from discord_commands import SKIP, check_skip_commands
 from notifier import notify
 
 PARIS_TZ = pytz.timezone("Europe/Paris")
-APP_URL = os.getenv("APP_URL", "https://doorjames.app")
+APP_URL = os.getenv("APP_URL", "https://spa.doorjames.app")
 BOOKINGS_PATH = Path(os.getenv("BOOKINGS_PATH", "bookings.csv"))
 
 DAYS_AHEAD = 41
@@ -90,9 +90,14 @@ def run_book() -> None:
             if ensure_authenticated(page, context):
                 notify("Réauthentification réussie ✅", "Session renouvelée automatiquement", silent=_is_silent_day())
 
-            book(page, target)
+            result = book(page, target)
             _update_status(target_str, "booked")
-            notify("Réservation réussie ✅", f"Bureau réservé pour le {target_str} (09:00–17:00)", silent=_is_silent_day())
+            notify(
+                "Réservation réussie ✅",
+                f"{result['desk']} ({result['area']}) réservé pour le "
+                f"{result['date']} ({result['start']}–{result['end']})",
+                silent=_is_silent_day(),
+            )
 
         except Exception as e:
             _update_status(target_str, "error")
@@ -118,9 +123,14 @@ def run_cancel(target_date=None) -> None:
             if ensure_authenticated(page, context):
                 notify("Réauthentification réussie ✅", "Session renouvelée automatiquement", silent=_is_silent_day())
 
-            cancel(page, target)
+            result = cancel(page, target)
             _update_status(target_str, "cancelled")
-            notify("Annulation réussie ✅", f"Réservation annulée pour le {target_str}")
+            notify(
+                "Annulation réussie ✅",
+                f"{result['desk']} ({result['area']}) annulé pour le "
+                f"{result['date']} ({result['start']}–{result['end']})",
+                silent=_is_silent_day(),
+            )
 
         except Exception as e:
             notify("Erreur annulation ❌", f"{target_str} — {e}")
@@ -160,18 +170,29 @@ def run_checkin() -> None:
 
             if is_ooo:
                 try:
-                    cancel(page, today)
+                    result = cancel(page, today)
                     _update_status(today_str, "cancelled")
-                    notify("Annulation réussie ✅", f"Réservation annulée pour le {today_str} ({today_status})", silent=_is_silent_day())
+                    notify(
+                        "Annulation réussie ✅",
+                        f"{result['desk']} ({result['area']}) annulé pour le "
+                        f"{result['date']} ({result['start']}–{result['end']}) "
+                        f"— {today_status}",
+                        silent=_is_silent_day(),
+                    )
                 except RuntimeError as e:
                     if "No booking found" in str(e):
                         print(f"[checkin] No booking to cancel for {today_str} ({today_status}) — nothing to do.")
                     else:
                         raise
             else:
-                checkin(page)
+                result = checkin(page)
                 _update_status(today_str, "checked_in")
-                notify("Check-in réussi ✅", f"Check-in effectué pour le {today_str}", silent=_is_silent_day())
+                notify(
+                    "Check-in réussi ✅",
+                    f"{result['desk']} ({result['area']}) check-in effectué "
+                    f"le {result['date']} ({result['start']}–{result['end']})",
+                    silent=_is_silent_day(),
+                )
 
         except Exception as e:
             notify("Erreur check-in/annulation ❌", f"{today_str} — {e}")
