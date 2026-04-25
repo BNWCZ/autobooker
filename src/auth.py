@@ -24,9 +24,20 @@ def get_browser_context(playwright: Playwright, headless: bool = True) -> tuple[
     return browser, context
 
 
+def _is_on_app(page) -> bool:
+    """True when the page is on the app domain AND past the login screen."""
+    return APP_DOMAIN in page.url and "/login" not in page.url
+
+
 def is_session_expired(page) -> bool:
-    """Returns True if the current page is not on the app domain (i.e. redirected to auth)."""
-    return APP_DOMAIN not in page.url
+    page.wait_for_load_state("networkidle", timeout=15_000)
+    if _is_on_app(page):
+        return False
+    if page.locator("input[name='email']").count() > 0:
+        return True
+    if page.locator("input[name='loginfmt']").count() > 0:
+        return True
+    return not _is_on_app(page)
 
 
 def save_session(context: BrowserContext) -> None:
@@ -46,35 +57,66 @@ def ensure_authenticated(page, context: BrowserContext) -> bool:
 
     username = os.getenv("DOORJAMES_USERNAME", "")
     password = os.getenv("DOORJAMES_PASSWORD", "")
+    ms_email = os.getenv("MICROSOFT_EMAIL", username)
     if not username or not password:
-        raise RuntimeError("DOORJAMES_USERNAME or DOORJAMES_PASSWORD not set in .env")
+        raise RuntimeError(
+            "Session expirée — DOORJAMES_USERNAME ou DOORJAMES_PASSWORD "
+            "non configuré dans .env"
+        )
 
-    # Step 1 — email
-    page.wait_for_selector("input[name='loginfmt']", timeout=10_000)
-    page.fill("input[name='loginfmt']", username)
-    page.click("#idSIButton9")
+    # Step 1 — Door James native login page: fill email, click Continue
+    dj_email = page.locator("input[name='email']")
+    if dj_email.count() > 0:
+        dj_email.fill(username)
+        page.wait_for_timeout(500)
+        page.locator("button[type='submit']").click()
+        page.wait_for_load_state("networkidle", timeout=30_000)
+        page.wait_for_timeout(3000)
 
-    # Step 2 — password
-    page.wait_for_selector("input[name='passwd']", timeout=10_000)
-    page.fill("input[name='passwd']", password)
-    page.click("#idSIButton9")
+    # Step 2 — Microsoft: account picker OR email input
+    if not _is_on_app(page):
+        tile = page.locator("#tilesHolder > div").first
+        ms_loginfmt = page.locator("input[name='loginfmt']")
 
-    # Wait for post-login navigation to settle
-    page.wait_for_load_state("networkidle", timeout=30_000)
-
-    # Step 3 — "Stay signed in?" interstitial (click No)
-    if APP_DOMAIN not in page.url:
-        try:
-            page.wait_for_selector("#idBtn_Back", timeout=5_000)
-            page.click("#idBtn_Back")
+        if tile.count() > 0:
+            tile.click()
             page.wait_for_load_state("networkidle", timeout=30_000)
+            page.wait_for_timeout(5000)
+        elif ms_loginfmt.is_visible():
+            ms_loginfmt.fill(ms_email)
+            page.wait_for_timeout(300)
+            page.click("#idSIButton9")
+            page.wait_for_load_state("networkidle", timeout=30_000)
+            page.wait_for_timeout(5000)
+
+    # Step 3 — Microsoft password page (may be skipped if MS session is valid)
+    if not _is_on_app(page):
+        try:
+            page.wait_for_selector(
+                "input[name='loginfmt']", state="hidden", timeout=10_000
+            )
         except Exception:
             pass
+        page.wait_for_timeout(1000)
+        page.fill("input#i0118", password)
+        page.wait_for_timeout(500)
+        page.click("#idSIButton9")
+        page.wait_for_load_state("networkidle", timeout=30_000)
+        page.wait_for_timeout(5000)
 
-    if APP_DOMAIN not in page.url:
+    # Step 4 — "Stay signed in?" interstitial (click No)
+    if not _is_on_app(page):
+        stay_btn = page.locator("#idBtn_Back")
+        if stay_btn.count() > 0:
+            stay_btn.click()
+            page.wait_for_load_state("networkidle", timeout=30_000)
+            page.wait_for_timeout(3000)
+
+    if not _is_on_app(page):
         raise RuntimeError(
-            "MFA required or authentication failed — "
-            "run `python src/main.py auth` to refresh manually"
+            "Session expirée — réauthentification échouée "
+            f"(MFA ou erreur de mot de passe). URL: {page.url}\n"
+            f"Connectez-vous manuellement : {APP_URL}"
         )
 
     save_session(context)
