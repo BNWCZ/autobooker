@@ -29,8 +29,16 @@ def _is_on_app(page) -> bool:
     return APP_DOMAIN in page.url and "/login" not in page.url
 
 
+def _wait_for_page_ready(page, timeout: int = 30_000) -> None:
+    """Wait until the SPA dashboard or a login form is visible."""
+    page.wait_for_selector(
+        "button.mdc-fab, input[name='email'], input[name='loginfmt']",
+        timeout=timeout,
+    )
+
+
 def is_session_expired(page) -> bool:
-    page.wait_for_load_state("networkidle", timeout=15_000)
+    _wait_for_page_ready(page)
     if _is_on_app(page):
         return False
     if page.locator("input[name='email']").count() > 0:
@@ -70,8 +78,11 @@ def ensure_authenticated(page, context: BrowserContext) -> bool:
         dj_email.fill(username)
         page.wait_for_timeout(500)
         page.locator("button[type='submit']").click()
-        page.wait_for_load_state("networkidle", timeout=30_000)
-        page.wait_for_timeout(3000)
+        page.wait_for_selector(
+            "#tilesHolder, input[name='loginfmt'], input#i0118, button.mdc-fab",
+            timeout=30_000,
+        )
+        page.wait_for_timeout(2000)
 
     # Step 2 — Microsoft: account picker OR email input
     if not _is_on_app(page):
@@ -80,14 +91,20 @@ def ensure_authenticated(page, context: BrowserContext) -> bool:
 
         if tile.count() > 0:
             tile.click()
-            page.wait_for_load_state("networkidle", timeout=30_000)
-            page.wait_for_timeout(5000)
+            page.wait_for_selector(
+                "input#i0118, button.mdc-fab, #idBtn_Back",
+                timeout=30_000,
+            )
+            page.wait_for_timeout(2000)
         elif ms_loginfmt.is_visible():
             ms_loginfmt.fill(ms_email)
             page.wait_for_timeout(300)
             page.click("#idSIButton9")
-            page.wait_for_load_state("networkidle", timeout=30_000)
-            page.wait_for_timeout(5000)
+            page.wait_for_selector(
+                "input#i0118, button.mdc-fab, #idBtn_Back",
+                timeout=30_000,
+            )
+            page.wait_for_timeout(2000)
 
     # Step 3 — Microsoft password page (may be skipped if MS session is valid)
     if not _is_on_app(page):
@@ -101,16 +118,18 @@ def ensure_authenticated(page, context: BrowserContext) -> bool:
         page.fill("input#i0118", password)
         page.wait_for_timeout(500)
         page.click("#idSIButton9")
-        page.wait_for_load_state("networkidle", timeout=30_000)
-        page.wait_for_timeout(5000)
+        page.wait_for_selector(
+            "button.mdc-fab, #idBtn_Back", timeout=30_000,
+        )
+        page.wait_for_timeout(2000)
 
     # Step 4 — "Stay signed in?" interstitial (click No)
     if not _is_on_app(page):
         stay_btn = page.locator("#idBtn_Back")
         if stay_btn.count() > 0:
             stay_btn.click()
-            page.wait_for_load_state("networkidle", timeout=30_000)
-            page.wait_for_timeout(3000)
+            page.wait_for_selector("button.mdc-fab", timeout=30_000)
+            page.wait_for_timeout(2000)
 
     if not _is_on_app(page):
         raise RuntimeError(

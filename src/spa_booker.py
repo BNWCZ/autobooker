@@ -49,10 +49,9 @@ def book(page: Page, target_date: date) -> dict:
     resa_btn = page.locator(".fab-action[aria-label='Réservation']")
     resa_btn.wait_for(state="visible", timeout=5000)
     resa_btn.click()
-    page.wait_for_load_state("networkidle")
 
     office = page.locator("djs-office-banner").first
-    office.wait_for(state="visible", timeout=8000)
+    office.wait_for(state="visible", timeout=15_000)
     office.click()
     page.wait_for_timeout(600)
 
@@ -64,12 +63,15 @@ def book(page: Page, target_date: date) -> dict:
     continuer = page.locator(".fab-button-context", has_text="Continuer")
     continuer.wait_for(state="visible", timeout=5000)
     continuer.click()
-    page.wait_for_load_state("networkidle")
+
+    page.locator(".mat-calendar-body-cell-content").first.wait_for(
+        state="visible", timeout=15_000,
+    )
 
     _navigate_to_month(page, month_offset)
 
     day_cell = page.locator(
-        ".mat-calendar-body-cell-content.mat-focus-indicator",
+        ".mat-calendar-body-cell-content",
         has_text=str(target_date.day),
     ).first
     day_cell.wait_for(state="visible", timeout=5000)
@@ -82,10 +84,9 @@ def book(page: Page, target_date: date) -> dict:
     carte = page.locator(".fab-button-context", has_text="Afficher la carte")
     carte.wait_for(state="visible", timeout=5000)
     carte.click(force=True)
-    page.wait_for_load_state("networkidle")
 
-    area_btn = page.locator("djs-area-selector .area-selector-button")
-    area_btn.wait_for(state="visible", timeout=5000)
+    area_btn = page.locator("djs-area-selector button").first
+    area_btn.wait_for(state="visible", timeout=15_000)
     area_btn.click()
     page.wait_for_timeout(800)
 
@@ -153,7 +154,7 @@ def cancel(page: Page, target_date: Optional[date] = None) -> dict:
     today = (target_date or datetime.now(PARIS_TZ).date()).strftime("%d/%m/%Y")
 
     page.wait_for_selector("button.mdc-fab", timeout=30_000)
-    page.wait_for_load_state("networkidle")
+    page.wait_for_timeout(2000)
 
     card = page.locator(
         "djs-dashboard-item",
@@ -166,7 +167,7 @@ def cancel(page: Page, target_date: Optional[date] = None) -> dict:
         )
     ).first
     try:
-        card.wait_for(state="visible", timeout=8000)
+        card.wait_for(state="visible", timeout=15_000)
     except Exception:
         raise RuntimeError("No booking found to cancel")
 
@@ -220,7 +221,7 @@ def checkin(page: Page) -> dict:
     today = datetime.now(PARIS_TZ).date().strftime("%d/%m/%Y")
 
     page.wait_for_selector("button.mdc-fab", timeout=30_000)
-    page.wait_for_load_state("networkidle")
+    page.wait_for_timeout(2000)
 
     card = page.locator(
         "djs-dashboard-item",
@@ -233,7 +234,7 @@ def checkin(page: Page) -> dict:
         )
     ).first
     try:
-        card.wait_for(state="visible", timeout=8000)
+        card.wait_for(state="visible", timeout=15_000)
     except Exception:
         raise RuntimeError("No booking found to check in")
 
@@ -343,12 +344,11 @@ def _verify_booking(page: Page) -> bool:
     try:
         app_url = os.getenv("APP_URL", "https://spa.doorjames.app")
         page.goto(f"{app_url}/agenda")
-        page.wait_for_load_state("networkidle", timeout=15_000)
         match = page.locator(
             "djs-dashboard-item",
             has=page.locator("h2", has_text=BOOKING_DESK),
         )
-        match.first.wait_for(state="visible", timeout=8000)
+        match.first.wait_for(state="visible", timeout=15_000)
         return True
     except Exception:
         return False
