@@ -1,7 +1,10 @@
 import os
+from datetime import datetime
 from pathlib import Path
 
-from playwright.sync_api import Browser, BrowserContext, Playwright
+from playwright.sync_api import Browser, BrowserContext, Playwright, TimeoutError as PlaywrightTimeout
+
+from notifier import notify
 
 STATE_PATH = Path(os.getenv("SESSION_STATE_PATH", "session/state.json"))
 APP_DOMAIN = "spa.doorjames.app"
@@ -29,23 +32,46 @@ def _is_on_app(page) -> bool:
     return APP_DOMAIN in page.url and "/login" not in page.url
 
 
+DEBUG_DIR = Path("debug_out")
+
+
+def _dump_debug(page, label: str) -> None:
+    DEBUG_DIR.mkdir(exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    prefix = f"{ts}_{label}"
+    try:
+        page.screenshot(path=str(DEBUG_DIR / f"{prefix}.png"), full_page=True, timeout=10_000)
+    except Exception as exc:
+        print(f"[debug] screenshot failed for {prefix}: {exc}")
+    try:
+        with open(DEBUG_DIR / f"{prefix}.html", "w") as f:
+            f.write(page.content())
+    except Exception as exc:
+        print(f"[debug] html dump failed for {prefix}: {exc}")
+    print(f"[debug] saved {prefix}  url={page.url}")
+
+
 def _wait_for_page_ready(page, timeout: int = 30_000) -> None:
     """Wait until the SPA dashboard or a login form is visible."""
-    page.wait_for_selector(
-        "button.mdc-fab, input[name='email'], input[name='loginfmt']",
-        timeout=timeout,
-    )
+    selector = "button.mdc-fab, input[name='email'], input[name='loginfmt'], #idDiv_SAOTCAS_Title, #idRichContext_DisplaySign"
+    try:
+        page.wait_for_selector(selector, timeout=timeout)
+    except PlaywrightTimeout:
+        _dump_debug(page, "wait_for_page_ready_retry")
+        print("[auth] page not ready, reloading and retrying once...")
+        page.reload(wait_until="load")
+        try:
+            page.wait_for_selector(selector, timeout=timeout)
+        except PlaywrightTimeout:
+            _dump_debug(page, "wait_for_page_ready_failed")
+            raise
 
 
 def is_session_expired(page) -> bool:
     _wait_for_page_ready(page)
     if _is_on_app(page):
         return False
-    if page.locator("input[name='email']").count() > 0:
-        return True
-    if page.locator("input[name='loginfmt']").count() > 0:
-        return True
-    return not _is_on_app(page)
+    return True
 
 
 def save_session(context: BrowserContext) -> None:
@@ -119,9 +145,26 @@ def ensure_authenticated(page, context: BrowserContext) -> bool:
         page.wait_for_timeout(500)
         page.click("#idSIButton9")
         page.wait_for_selector(
-            "button.mdc-fab, #idBtn_Back", timeout=30_000,
+            "button.mdc-fab, #idBtn_Back, #idDiv_SAOTCAS_Title, #idRichContext_DisplaySign",
+            timeout=30_000,
         )
         page.wait_for_timeout(2000)
+
+    # Step 3b — Microsoft MFA approval (Authenticator push or number matching)
+    if not _is_on_app(page):
+        mfa_prompt = page.locator("#idDiv_SAOTCAS_Title, #idRichContext_DisplaySign")
+        if mfa_prompt.count() > 0:
+            number_el = page.locator("#idRichContext_DisplaySign")
+            if number_el.count() > 0:
+                code = number_el.inner_text().strip()
+                notify("MFA requise 🔐", f"Approuvez la connexion sur votre téléphone (code : {code})")
+            else:
+                notify("MFA requise 🔐", "Approuvez la notification Microsoft Authenticator sur votre téléphone")
+            _dump_debug(page, "mfa_waiting")
+            page.wait_for_selector(
+                "button.mdc-fab, #idBtn_Back", timeout=120_000,
+            )
+            page.wait_for_timeout(2000)
 
     # Step 4 — "Stay signed in?" interstitial (click No)
     if not _is_on_app(page):
