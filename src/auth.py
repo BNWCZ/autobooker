@@ -53,7 +53,11 @@ def _dump_debug(page, label: str) -> None:
 
 def _wait_for_page_ready(page, timeout: int = 30_000) -> None:
     """Wait until the SPA dashboard or a login form is visible."""
-    selector = "button.mdc-fab, input[name='email'], input[name='loginfmt'], #idDiv_SAOTCAS_Title, #idRichContext_DisplaySign"
+    selector = (
+        "button.mdc-fab, input[name='email']:not([disabled]), "
+        "input[name='loginfmt'], #tilesHolder, input#i0118, "
+        "#idDiv_SAOTCAS_Title, #idRichContext_DisplaySign"
+    )
     try:
         page.wait_for_selector(selector, timeout=timeout)
     except PlaywrightTimeout:
@@ -98,16 +102,17 @@ def ensure_authenticated(page, context: BrowserContext) -> bool:
             "non configuré dans .env"
         )
 
-    # Step 1 — Door James native login page: fill email, click Continue
-    dj_email = page.locator("input[name='email']")
+    # Step 1 — Door James login page
+    # The SPA may auto-redirect to Microsoft SSO (disabled email field).
+    dj_email = page.locator("input[name='email']:not([disabled])")
     if dj_email.count() > 0:
         dj_email.fill(username)
         page.wait_for_timeout(500)
-        page.locator("button[type='submit']").click()
-        page.wait_for_selector(
-            "#tilesHolder, input[name='loginfmt'], input#i0118, button.mdc-fab",
-            timeout=30_000,
-        )
+        page.locator("button[type='submit']:not([disabled])").click()
+
+    ms_or_app = "#tilesHolder, input[name='loginfmt'], input#i0118, button.mdc-fab"
+    if not _is_on_app(page):
+        page.wait_for_selector(ms_or_app, timeout=30_000)
         page.wait_for_timeout(2000)
 
     # Step 2 — Microsoft: account picker OR email input
@@ -145,9 +150,14 @@ def ensure_authenticated(page, context: BrowserContext) -> bool:
         page.wait_for_timeout(500)
         page.click("#idSIButton9")
         page.wait_for_selector(
-            "button.mdc-fab, #idBtn_Back, #idDiv_SAOTCAS_Title, #idRichContext_DisplaySign",
+            "button.mdc-fab, #idBtn_Back, #idDiv_SAOTCAS_Title, "
+            "#idRichContext_DisplaySign, #passwordError",
             timeout=30_000,
         )
+        if page.locator("#passwordError").count() > 0 and page.locator("#passwordError").is_visible():
+            raise RuntimeError(
+                "Mot de passe incorrect — mettez à jour DOORJAMES_PASSWORD dans .env"
+            )
         page.wait_for_timeout(2000)
 
     # Step 3b — Microsoft MFA approval (Authenticator push or number matching)
