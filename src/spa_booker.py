@@ -160,10 +160,12 @@ def cancel(page: Page, target_date: Optional[date] = None) -> dict:
         "djs-dashboard-item",
         has=page.locator("h2", has_text=BOOKING_DESK),
     ).filter(
-        has_not=page.locator(
-            ".djs-status-tag.cancelled, "
-            ".djs-status-tag.expired, "
-            ".djs-status-tag.checkedOut"
+        has=page.locator(
+            ".djs-status-tag.confirmed, "
+            ".djs-status-tag.checkInOpen, "
+            ".djs-status-tag.checkedIn, "
+            ".djs-status-tag.declined, "
+            ".djs-status-tag.checkOutForgotten"
         )
     ).first
     try:
@@ -227,10 +229,12 @@ def checkin(page: Page) -> dict:
         "djs-dashboard-item",
         has=page.locator("h2", has_text=BOOKING_DESK),
     ).filter(
-        has_not=page.locator(
-            ".djs-status-tag.cancelled, "
-            ".djs-status-tag.expired, "
-            ".djs-status-tag.checkedOut"
+        has=page.locator(
+            ".djs-status-tag.confirmed, "
+            ".djs-status-tag.checkInOpen, "
+            ".djs-status-tag.checkedIn, "
+            ".djs-status-tag.declined, "
+            ".djs-status-tag.checkOutForgotten"
         )
     ).first
     try:
@@ -289,8 +293,10 @@ def _navigate_to_month(page: Page, offset: int) -> None:
 
 
 def _set_time_field(page: Page, field_index: int, hour: int, minute: int) -> None:
-    infix = page.locator(".mat-mdc-form-field-infix").nth(field_index)
-    infix.locator("input").click()
+    # Click the chevron icon suffix — avoids the time-separator div that overlaps
+    # the center of the mat-mdc-form-field-infix and intercepts plain clicks.
+    app_time = page.locator("app-time-input").nth(field_index)
+    app_time.locator(".mat-mdc-form-field-icon-suffix").click()
     page.wait_for_timeout(400)
 
     mode_toggle = page.locator(".picker-actions .mode-toggle button")
