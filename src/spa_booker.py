@@ -122,6 +122,13 @@ def book(page: Page, target_date: date) -> dict:
     desk_item.click()
     page.wait_for_timeout(600)
 
+    # The desk detail panel opens with "Ma réservation" tab active by default.
+    # "Sélectionner" lives under the "Actions" tab — click it first.
+    actions_tab = page.locator("button.tab-button", has_text="Actions")
+    actions_tab.wait_for(state="visible", timeout=5000)
+    actions_tab.click()
+    page.wait_for_timeout(400)
+
     selectionner = page.locator(
         ".mat-mdc-nav-list .mdc-list-item__content", has_text="Sélectionner"
     ).first
