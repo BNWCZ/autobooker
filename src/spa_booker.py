@@ -17,6 +17,7 @@ PARIS_TZ = pytz.timezone("Europe/Paris")
 
 BOOKING_AREA = os.getenv("BOOKING_AREA", "D2")
 BOOKING_DESK = os.getenv("BOOKING_DESK", "D2 C 11-Q")
+BOOKING_OFFICE = os.getenv("BOOKING_OFFICE", "Paris")
 
 _START_HOUR, _START_MINUTE = 9, 0
 _END_HOUR, _END_MINUTE = 17, 0
@@ -44,26 +45,24 @@ def book(page: Page, target_date: date) -> dict:
     fab = page.locator("button.mdc-fab.mat-mdc-fab").first
     fab.wait_for(state="visible", timeout=8000)
     fab.click()
-    page.wait_for_timeout(600)
+    page.wait_for_timeout(800)
 
+    # FAB may show a speed-dial menu or open the wizard directly.
     resa_btn = page.locator(".fab-action[aria-label='Réservation']")
-    resa_btn.wait_for(state="visible", timeout=5000)
-    resa_btn.click()
+    if resa_btn.count() > 0 and resa_btn.first.is_visible():
+        resa_btn.first.click()
+        page.wait_for_timeout(1000)
 
-    office = page.locator("djs-office-banner").first
-    office.wait_for(state="visible", timeout=15_000)
-    office.click()
-    page.wait_for_timeout(600)
+    # --- Wizard Step 1: Bureau (office selection) ---
+    _select_office(page)
 
-    bureau = page.locator(".widget-banner.padded").first
-    bureau.wait_for(state="visible", timeout=5000)
-    bureau.click()
-    page.wait_for_timeout(600)
+    # --- Wizard Step 2: Type ---
+    _advance_wizard(page)
 
-    continuer = page.locator(".fab-button-context", has_text="Continuer")
-    continuer.wait_for(state="visible", timeout=5000)
-    continuer.click()
+    # --- Wizard Step 3: Participants ---
+    _advance_wizard(page)
 
+    # --- Wizard Step 4: Heure (date + time) ---
     page.locator(".mat-calendar-body-cell-content").first.wait_for(
         state="visible", timeout=15_000,
     )
@@ -85,6 +84,7 @@ def book(page: Page, target_date: date) -> dict:
     carte.wait_for(state="visible", timeout=5000)
     carte.click(force=True)
 
+    # --- Wizard Step 5: Ressource (desk selection on map) ---
     area_btn = page.locator("djs-area-selector button").first
     area_btn.wait_for(state="visible", timeout=15_000)
     area_btn.click()
@@ -99,11 +99,11 @@ def book(page: Page, target_date: date) -> dict:
     page.wait_for_timeout(600)
 
     drawer_btn = page.locator("button.drawer-toggle-btn")
-    drawer_btn.wait_for(state="visible", timeout=5000)
-    drawer_btn.click()
-    page.wait_for_timeout(600)
+    if drawer_btn.count() > 0 and drawer_btn.first.is_visible():
+        drawer_btn.first.click()
+        page.wait_for_timeout(600)
 
-    search = page.locator("input[placeholder*='Rechercher']")
+    search = page.locator("input[placeholder*='Rechercher par nom']")
     search.wait_for(state="visible", timeout=5000)
     search.fill(BOOKING_DESK)
     page.wait_for_timeout(800)
@@ -122,8 +122,6 @@ def book(page: Page, target_date: date) -> dict:
     desk_item.click()
     page.wait_for_timeout(600)
 
-    # The desk detail panel opens with "Ma réservation" tab active by default.
-    # "Sélectionner" lives under the "Actions" tab — click it first.
     actions_tab = page.locator("button.tab-button", has_text="Actions")
     actions_tab.wait_for(state="visible", timeout=5000)
     actions_tab.click()
@@ -136,6 +134,7 @@ def book(page: Page, target_date: date) -> dict:
     selectionner.click()
     page.wait_for_timeout(600)
 
+    # --- Wizard Step 6: Confirmer ---
     confirmer = page.locator(".fab-button-context", has_text="Confirmer")
     confirmer.wait_for(state="visible", timeout=5000)
     confirmer.click()
@@ -291,6 +290,58 @@ def checkin(page: Page) -> dict:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _select_office(page: Page) -> None:
+    """Wizard Step 1 — pick the office from the grid."""
+    office_widget = page.locator(
+        ".widget-item",
+        has=page.locator(".widget-label", has_text=BOOKING_OFFICE),
+    ).first
+
+    if not (office_widget.count() > 0 and office_widget.is_visible()):
+        search_icon = page.locator(
+            "button:has(mat-icon[data-mat-icon-name*='search'])"
+        )
+        if search_icon.count() > 0:
+            search_icon.first.click()
+            page.wait_for_timeout(500)
+        search_input = page.locator(
+            "input[placeholder*='Rechercher des bureaux']"
+        )
+        if search_input.count() > 0:
+            search_input.first.fill(BOOKING_OFFICE)
+            page.wait_for_timeout(2000)
+            loading = page.locator("text=Chargement")
+            if loading.count() > 0:
+                try:
+                    loading.first.wait_for(state="hidden", timeout=15000)
+                except Exception:
+                    pass
+            page.wait_for_timeout(1000)
+
+    office_widget = page.locator(
+        ".widget-item",
+        has=page.locator(".widget-label", has_text=BOOKING_OFFICE),
+    ).first
+    office_widget.wait_for(state="visible", timeout=10000)
+    office_widget.click()
+    page.wait_for_timeout(800)
+
+    sub_building = page.locator(".widget-banner.padded")
+    if sub_building.count() > 0 and sub_building.first.is_visible():
+        sub_building.first.click()
+        page.wait_for_timeout(600)
+
+    _advance_wizard(page)
+
+
+def _advance_wizard(page: Page) -> None:
+    """Click the Continuer button to advance to the next wizard step."""
+    continuer = page.locator(".fab-button-context", has_text="Continuer")
+    if continuer.count() > 0 and continuer.first.is_visible():
+        continuer.first.click()
+        page.wait_for_timeout(800)
+
 
 def _navigate_to_month(page: Page, offset: int) -> None:
     next_btn = page.locator("button.mat-calendar-next-button")
